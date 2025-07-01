@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم المقهى</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <div class="admin-container">
+        <header class="admin-header">
+            <h1 class="admin-title">لوحة تحكم المقهى</h1>
+            <nav class="admin-nav">
+                <button @click="activeTab = 'orders'" :class="{active: activeTab === 'orders'}" class="admin-nav-button">
+                    <i class="fas fa-list-alt"></i> الطلبات
+                </button>
+                <button @click="activeTab = 'menu'" :class="{active: activeTab === 'menu'}" class="admin-nav-button">
+                    <i class="fas fa-utensils"></i> إدارة القائمة
+                </button>
+                <button @click="activeTab = 'stats'" :class="{active: activeTab === 'stats'}" class="admin-nav-button">
+                    <i class="fas fa-chart-bar"></i> الإحصائيات
+                </button>
+            </nav>
+        </header>
+
+        <main class="admin-main">
+            <!-- قسم الطلبات -->
+            <section v-if="activeTab === 'orders'" class="orders-section">
+                <div class="orders-header">
+                    <h2 class="orders-title"><i class="fas fa-clipboard-list"></i> الطلبات الحالية</h2>
+                    <div class="orders-filters">
+                        <select v-model="orderFilter" class="filter-select">
+                            <option value="all">جميع الطلبات</option>
+                            <option value="new">جديدة</option>
+                            <option value="preparing">قيد التحضير</option>
+                            <option value="ready">جاهزة</option>
+                        </select>
+                        <button @click="fetchOrders" class="refresh-button">
+                            <i class="fas fa-sync-alt"></i> تحديث
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="filteredOrders.length > 0" class="orders-grid">
+                    <div v-for="order in filteredOrders" class="order-card" :class="'status-' + order.status">
+                        <div class="order-card-header">
+                            <h3 class="order-card-title">الطاولة: {{order.tableNumber}}</h3>
+                            <div>
+                                <span class="order-card-time">{{formatTime(order.createdAt)}}</span>
+                                <span class="order-card-status" :class="'status-' + order.status">
+                                    {{getStatusText(order.status)}}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="order-card-body">
+                            <div class="order-items-list">
+                                <div v-for="item in order.items" class="order-item">
+                                    <span class="order-item-name">{{getProductName(item.productId)}} x{{item.quantity}}</span>
+                                    <span class="order-item-price">{{getProductPrice(item.productId) * item.quantity}} ج.م</span>
+                                    <p v-if="item.notes" class="order-item-notes">{{item.notes}}</p>
+                                </div>
+                            </div>
+                            
+                            <div class="order-total">
+                                <strong>المجموع: {{calculateOrderTotal(order)}} ج.م</strong>
+                            </div>
+                            
+                            <select v-model="order.status" @change="updateOrderStatus(order)" class="order-status-select">
+                                <option value="new">جديدة</option>
+                                <option value="preparing">قيد التحضير</option>
+                                <option value="ready">جاهزة</option>
+                                <option value="completed">مكتملة</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="empty-state">
+                    <div class="empty-icon">
+                        <i class="fas fa-clipboard-list fa-3x"></i>
+                    </div>
+                    <p class="empty-text">لا توجد طلبات حالية</p>
+                </div>
+            </section>
+
+            <!-- قسم إدارة القائمة -->
+            <section v-if="activeTab === 'menu'" class="menu-management-section">
+                <h2 class="menu-management-title"><i class="fas fa-utensils"></i> إدارة قائمة المقهى</h2>
+                
+                <div class="menu-management-grid">
+                    <div class="add-product-form">
+                        <h3 class="form-title"><i class="fas fa-plus-circle"></i> إضافة منتج جديد</h3>
+                        <div class="form-group">
+                            <label class="form-label">اسم المنتج:</label>
+                            <input v-model="newProduct.name" type="text" class="form-input" placeholder="مثال: كابتشينو">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">السعر (ج.م):</label>
+                            <input v-model="newProduct.price" type="number" class="form-input" placeholder="مثال: 35">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">الفئة:</label>
+                            <input v-model="newProduct.category" type="text" class="form-input" placeholder="مثال: مشروبات ساخنة">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">صورة المنتج (رابط):</label>
+                            <input v-model="newProduct.image" type="text" class="form-input" placeholder="https://example.com/image.jpg">
+                        </div>
+                        <button @click="addProduct" class="form-button">
+                            <i class="fas fa-save"></i> حفظ المنتج
+                        </button>
+                    </div>
+
+                    <div class="products-list">
+                        <h3 class="form-title"><i class="fas fa-list"></i> المنتجات الحالية</h3>
+                        <div v-if="products.length > 0" class="products-grid">
+                            <div v-for="product in products" class="product-card">
+                                <img :src="'../images/products/' + product.image" :alt="product.name" class="product-image">
+                                <div class="product-body">
+                                    <h3 class="product-name">{{product.name}}</h3>
+                                    <p class="product-price">{{product.price}} ج.م</p>
+                                    <span class="product-category">{{product.category}}</span>
+                                    <div class="product-actions">
+                                        <button @click="editProduct(product)" class="action-button edit-button">
+                                            <i class="fas fa-edit"></i> تعديل
+                                        </button>
+                                        <button @click="deleteProduct(product.id)" class="action-button delete-button">
+                                            <i class="fas fa-trash-alt"></i> حذف
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-state">
+                            <div class="empty-icon">
+                                <i class="fas fa-utensils fa-3x"></i>
+                            </div>
+                            <p class="empty-text">لا توجد منتجات مضافة</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- قسم الإحصائيات -->
+            <section v-if="activeTab === 'stats'" class="stats-section">
+                <h2 class="stats-title"><i class="fas fa-chart-pie"></i> إحصائيات المبيعات</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3 class="stat-title"><i class="fas fa-coins"></i> إجمالي المبيعات اليوم</h3>
+                        <p class="stat-value">{{dailySales}} ج.م</p>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <h3 class="stat-title"><i class="fas fa-clipboard-list"></i> عدد الطلبات اليوم</h3>
+                        <p class="stat-value">{{dailyOrders}}</p>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <h3 class="stat-title"><i class="fas fa-star"></i> المنتجات الأكثر طلباً</h3>
+                        <ul class="top-products-list">
+                            <li v-for="(item, index) in topProducts" class="top-product-item">
+                                <span class="top-product-name">{{index + 1}}. {{item.name}}</span>
+                                <span class="top-product-count">{{item.orders}}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>
